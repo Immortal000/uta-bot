@@ -7,6 +7,7 @@ import json
 from youtube_dl import YoutubeDL
 from scipy.io.wavfile import read, write
 import io
+import os
 import requests
 import audiofile
 import pytube
@@ -25,15 +26,21 @@ class Karaoke(commands.Cog):
 
 
     async def once_done(self, sink: discord.sinks, channel: discord.TextChannel, *args):
-        files = [audio.file for user_id, audio in sink.audio_data.items()]
+
+        recorded_users = [  # A list of recorded users
+            f"<@{user_id}>"
+            for user_id, audio in sink.audio_data.items()
+        ]
+
+        files = [discord.File(audio.file, f"{user_id}.{sink.encoding}") for user_id, audio in sink.audio_data.items()]  # List down the files.
 
         self.files = files
-        sent_audio_message = await channel.send(f"finished recording.", files=[discord.File(file, f"audio.{sink.encoding}" ) for file in self.files])
+        sent_audio_message = await channel.send(f"finished recording audio for: {', '.join(recorded_users)}.", files=files)
         self.message_id = sent_audio_message.id
 
         await self.msg.invoke(self.bot.get_command('merge'))
 
-        with open("final.mp3", 'rb') as fd:
+        with open(f"./karaoke_mixes/{self.msg.author.id}/final.mp3", 'rb') as fd:
             contents = fd.read()
 
         contents = io.BytesIO(contents)
@@ -50,17 +57,28 @@ class Karaoke(commands.Cog):
     async def merge(self, msg):
         message = await msg.fetch_message(self.message_id)
 
-        await message.attachments[0].save("voice_recording.mp3")
+        for attachment in message.attachments:
+            await attachment.save(f"./karaoke_mixes/{self.msg.author.id}/recordings/{attachment.filename}")
+
+        sound1 = None
+
+        for file in os.listdir(f"./karaoke_mixes/{self.msg.author.id}/recordings"):
+            if sound1:
+                sound1 = sound1.overlay(AudioSegment.from_mp3(f"./karaoke_mixes/{self.msg.author.id}/recordings/{file}"))
+            else:
+                sound1 = AudioSegment.from_mp3(f"./karaoke_mixes/{self.msg.author.id}/recordings/{file}")
+
+
+        # await message.attachments[0].save("voice_recording.mp3")
 
         # Get the 2 sounds: karaoke and user singing
-        sound1 = AudioSegment.from_mp3("voice_recording.mp3")
-        sound2 = AudioSegment.from_file("karaoke_song.mp3")
+        sound2 = AudioSegment.from_file(f"./karaoke_mixes/{self.msg.author.id}/karaoke_song.mp3")
 
         sound2 = sound2 - 10
 
         # Overlay the songs
         played_togther = sound1.overlay(sound2)
-        played_togther.export("final.mp3", format="mp3")
+        played_togther.export(f"./karaoke_mixes/{self.msg.author.id}/final.mp3", format="mp3")
 
     @commands.command()
     async def convert(self, msg, query:str):
@@ -69,16 +87,24 @@ class Karaoke(commands.Cog):
 
         # Converts the youtube video to an audio file
         sound = data.streams.get_audio_only()
-        sound.download(filename="karaoke_song.mp3")
+        sound.download(filename="karaoke_song.mp3", output_path=f"./karaoke_mixes/{self.msg.author.id}")
 
         # Saves the karaoke song to the local machine
-        with open("karaoke_song.mp3", 'rb') as fd:
+        with open(f"./karaoke_mixes/{self.msg.author.id}/karaoke_song.mp3", 'rb') as fd:
             contents = fd.read()
 
         # Converts the file into bytes for discord to read
         contents = io.BytesIO(contents)
 
         self.karaoke_song = contents
+
+        parent_dir = f"D:/programming/bots/uta-py/karaoke_mixes/{self.msg.author.id}"
+        directory = "recordings"
+
+        path = os.path.join(parent_dir, directory)
+
+        if not os.path.exists(path):
+            os.mkdir(path)
 
         # Send the karaoke song on discord
         await msg.send(files=[discord.File(contents, f"Karaoke_version.mp3")])
@@ -148,16 +174,18 @@ class Karaoke(commands.Cog):
             except:
                 await msg.send("Song format is wrong")
 
+
+        # Downloads the youtube karaoke to the local machine
+        await msg.invoke(self.bot.get_command('convert'), query=f"https://www.youtube.com{url_suffix}")
+
+        # Start the recording
+        await msg.invoke(self.bot.get_command('record'))
+
         # Plays the karaoke
         self.current_vc.play(
             discord.FFmpegPCMAudio(executable="C:/ffmpeg/bin/ffmpeg.exe", source=self.song_info)
         )
 
-        # Start the recording
-        await msg.invoke(self.bot.get_command('record'))
-
-        # Downloads the youtube karaoke to the local machine
-        await msg.invoke(self.bot.get_command('convert'), query=f"https://www.youtube.com{url_suffix}")
 
 
 def setup(bot):
