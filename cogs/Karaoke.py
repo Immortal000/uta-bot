@@ -11,6 +11,7 @@ import os
 import requests
 import audiofile
 import pytube
+import shutil
 
 class Karaoke(commands.Cog):
     def __init__(self, bot):
@@ -46,6 +47,7 @@ class Karaoke(commands.Cog):
         contents = io.BytesIO(contents)
 
         await self.msg.send(files=[discord.File(contents, f"your_beautiful_singing.mp3")])
+        shutil.rmtree(f"./karaoke_mixes/{self.msg.author.id}")
 
     @commands.command()
     async def lyrics(self, msg):
