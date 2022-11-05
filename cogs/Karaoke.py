@@ -25,6 +25,19 @@ class Karaoke(commands.Cog):
         self.karaoke_song = None
         self.msg = None
 
+    async def disconnect(self, ctx):
+        voice = ctx.author.voice
+
+        voice_client = discord.utils.get(ctx.bot.voice_clients, guild=ctx.guild)
+        if voice_client:
+            await voice.channel.disconnect()
+        elif not voice:
+            await ctx.send("Nothing to disconnect from")
+        else:
+            await voice.channel.disconnect()
+
+        await ctx.send("disconnected")
+
 
     async def once_done(self, sink: discord.sinks, channel: discord.TextChannel, *args):
 
